@@ -150,7 +150,7 @@ def main():
     use_wandb = False
     if is_main:
         try:
-            import os, wandb
+            import wandb
             os.environ.setdefault("WANDB_DIR", "/tmp")
             wandb.init(project=args.wandb_project, entity=args.wandb_entity,
                        name=args.run_name, config=vars(args),
@@ -191,7 +191,7 @@ def main():
     stream = token_stream(args.dataset, args.dataset_name, tokenizer,
                           args.seq_len, rank, world_size, args.seed)
 
-    scaler = torch.cuda.amp.GradScaler()
+    scaler = torch.amp.GradScaler("cuda")
 
     # ── training ──
     os.makedirs(args.out_dir, exist_ok=True)
@@ -222,7 +222,7 @@ def main():
         input_ids = batch[:, :-1]                    # [B, seq_len]
         labels = input_ids
 
-        with torch.cuda.amp.autocast(dtype=torch.float16):
+        with torch.amp.autocast("cuda", dtype=torch.float16):
             out = model(input_ids=input_ids, labels=labels)
         loss = out.loss / args.grad_accum
         scaler.scale(loss).backward()

@@ -123,7 +123,7 @@ def build_model(args, device):
         )
         model = Qwen3AttnResForCausalLM(config)
 
-    model = model.to(dtype=torch.float16, device=device)
+    model = model.to(device=device)
     return model
 
 

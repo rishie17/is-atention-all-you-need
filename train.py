@@ -123,7 +123,7 @@ def build_model(args, device):
         )
         model = Qwen3AttnResForCausalLM(config)
 
-    model = model.to(dtype=torch.bfloat16, device=device)
+    model = model.to(dtype=torch.float16, device=device)
     return model
 
 
@@ -189,6 +189,8 @@ def main():
     stream = token_stream(args.dataset, args.dataset_name, tokenizer,
                           args.seq_len, rank, world_size, args.seed)
 
+    scaler = torch.cuda.amp.GradScaler()
+
     # ── training ──
     os.makedirs(args.out_dir, exist_ok=True)
     model.train()
@@ -218,9 +220,10 @@ def main():
         input_ids = batch[:, :-1]                    # [B, seq_len]
         labels = input_ids
 
-        out = model(input_ids=input_ids, labels=labels)
+        with torch.cuda.amp.autocast(dtype=torch.float16):
+            out = model(input_ids=input_ids, labels=labels)
         loss = out.loss / args.grad_accum
-        loss.backward()
+        scaler.scale(loss).backward()
 
         accum_loss += loss.item()
         accum_step += 1
@@ -229,8 +232,10 @@ def main():
         if accum_step < args.grad_accum:
             continue
 
+        scaler.unscale_(optimizer)
         grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), args.max_norm)
-        optimizer.step()
+        scaler.step(optimizer)
+        scaler.update()
         scheduler.step()
         optimizer.zero_grad()
 

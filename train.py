@@ -34,8 +34,8 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", default="baseline", choices=["baseline", "block", "full"],
-                   help="baseline (standard Qwen3), block (Block AttnRes), full (Full AttnRes)")
+    p.add_argument("--mode", default="baseline", choices=["baseline", "block", "full", "rescaled"],
+                   help="baseline (standard Qwen3), block (Block AttnRes), full (Full AttnRes), rescaled (Rescaled Residual)")
     p.add_argument("--hidden_size", type=int, default=512)
     p.add_argument("--num_layers", type=int, default=12)
     p.add_argument("--num_heads", type=int, default=8)
@@ -113,10 +113,11 @@ def build_model(args, device):
         config = Qwen3Config(**common)
         model = Qwen3ForCausalLM(config)
     else:
+        attnres_mode = "rescaled_residual" if args.mode == "rescaled" else args.mode
         config = Qwen3AttnResConfig(
             attnres_num_blocks=args.num_blocks,
             attnres_recency_bias_init=0.0,  # zero init — paper default
-            attnres_mode=args.mode,
+            attnres_mode=attnres_mode,
             attnres_gate_type=args.gate_type,
             **common,
         )

@@ -141,13 +141,16 @@ class Qwen3AttnResDecoderLayer(GradientCheckpointingLayer):
         self.input_layernorm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.post_attention_layernorm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.attention_type = config.layer_types[layer_idx]
+        self.attnres_mode = getattr(config, "attnres_mode", "block")
 
         # AttnRes components — one (proj, norm) per sublayer.
-        self.attn_res_proj = nn.Linear(config.hidden_size, 1, bias=False)
-        self.attn_res_norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+        # Not needed for rescaled_residual mode (no learned routing).
+        if self.attnres_mode != "rescaled_residual":
+            self.attn_res_proj = nn.Linear(config.hidden_size, 1, bias=False)
+            self.attn_res_norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
-        self.mlp_res_proj = nn.Linear(config.hidden_size, 1, bias=False)
-        self.mlp_res_norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
+            self.mlp_res_proj = nn.Linear(config.hidden_size, 1, bias=False)
+            self.mlp_res_norm = Qwen3RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
 
         # Gate type determines how AttnRes output is mixed with residual stream
         self.gate_type = getattr(config, "attnres_gate_type", "bias")
@@ -179,9 +182,6 @@ class Qwen3AttnResDecoderLayer(GradientCheckpointingLayer):
             # Default "bias": no gate, AttnRes output used directly
             self.attn_res_bias = nn.Parameter(torch.tensor(bias_init))
             self.mlp_res_bias = nn.Parameter(torch.tensor(bias_init))
-
-        # AttnRes mode: "block" or "full"
-        self.attnres_mode = getattr(config, "attnres_mode", "block")
 
         # Block boundary: how many transformer layers per block (used in block mode)
         num_layers = config.num_hidden_layers
@@ -223,6 +223,23 @@ class Qwen3AttnResDecoderLayer(GradientCheckpointingLayer):
         **kwargs,
     ) -> tuple[list[torch.Tensor], torch.Tensor]:
         entropy_accum = kwargs.pop("entropy_accum", None)
+
+        # ---- Rescaled residual: deterministic per-layer scaling, no block history ----
+        if self.attnres_mode == "rescaled_residual":
+            alpha = 1.0 / (self.layer_idx + 1)
+            attn_out, _ = self.self_attn(
+                hidden_states=self.input_layernorm(partial_block),
+                attention_mask=attention_mask,
+                position_ids=position_ids,
+                past_key_values=past_key_values,
+                use_cache=use_cache,
+                cache_position=cache_position,
+                position_embeddings=position_embeddings,
+            )
+            partial_block = partial_block + alpha * attn_out
+            mlp_out = self.mlp(self.post_attention_layernorm(partial_block))
+            partial_block = partial_block + alpha * mlp_out
+            return blocks, partial_block
 
         # ---- Attention sublayer ----
         if entropy_accum is not None:

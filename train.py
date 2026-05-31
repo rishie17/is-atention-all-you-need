@@ -150,9 +150,11 @@ def main():
     use_wandb = False
     if is_main:
         try:
-            import wandb
+            import os, wandb
+            os.environ.setdefault("WANDB_DIR", "/tmp")
             wandb.init(project=args.wandb_project, entity=args.wandb_entity,
-                       name=args.run_name, config=vars(args))
+                       name=args.run_name, config=vars(args),
+                       settings=wandb.Settings(start_method="thread"))
             use_wandb = True
         except Exception as e:
             print(f"W&B init failed ({e}), continuing without logging")

@@ -28,12 +28,37 @@ from transformers.models.qwen3.modeling_qwen3 import (
 )
 from transformers.cache_utils import Cache, DynamicCache
 from transformers.generation import GenerationMixin
-from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
-from transformers.modeling_layers import GradientCheckpointingLayer
 from transformers.modeling_outputs import BaseModelOutputWithPast, CausalLMOutputWithPast
-from transformers.utils import can_return_tuple, auto_docstring
-from transformers.utils.generic import merge_with_config_defaults
-from transformers.utils.output_capturing import capture_outputs
+
+try:
+    from transformers.masking_utils import create_causal_mask, create_sliding_window_causal_mask
+except ImportError:
+    from transformers.modeling_attn_mask_utils import (
+        _prepare_4d_causal_attention_mask as create_causal_mask,
+        _prepare_4d_causal_attention_mask as create_sliding_window_causal_mask,
+    )
+
+try:
+    from transformers.modeling_layers import GradientCheckpointingLayer
+except ImportError:
+    import torch.nn as _nn
+    GradientCheckpointingLayer = _nn.Module
+
+try:
+    from transformers.utils import can_return_tuple, auto_docstring
+except ImportError:
+    can_return_tuple = lambda fn: fn
+    auto_docstring = lambda fn: fn
+
+try:
+    from transformers.utils.generic import merge_with_config_defaults
+except ImportError:
+    merge_with_config_defaults = lambda fn: fn
+
+try:
+    from transformers.utils.output_capturing import capture_outputs
+except ImportError:
+    capture_outputs = lambda fn: fn
 
 
 # ---------------------------------------------------------------------------

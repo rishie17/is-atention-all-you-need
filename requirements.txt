@@ -1,5 +1,5 @@
 torch>=2.0
-transformers>=4.40
+transformers>=4.47
 datasets
 wandb
 matplotlib

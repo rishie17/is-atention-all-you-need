@@ -199,11 +199,22 @@ def main():
     t0 = time.time()
     tokens_seen = 0
 
-    for chunk in stream:
-        if global_step >= args.steps:
+    stream_iter = iter(stream)
+
+    while global_step < args.steps:
+        # collect batch_size chunks into a single batched tensor
+        chunks = []
+        for _ in range(args.batch_size):
+            try:
+                chunks.append(next(stream_iter))
+            except StopIteration:
+                break
+        if len(chunks) < args.batch_size:
             break
 
-        input_ids = chunk[:-1].unsqueeze(0).to(device)
+        # each chunk is [seq_len+1]; stack → [B, seq_len+1], then split
+        batch = torch.stack(chunks).to(device)       # [B, seq_len+1]
+        input_ids = batch[:, :-1]                    # [B, seq_len]
         labels = input_ids
 
         out = model(input_ids=input_ids, labels=labels)
@@ -212,7 +223,7 @@ def main():
 
         accum_loss += loss.item()
         accum_step += 1
-        tokens_seen += args.seq_len
+        tokens_seen += args.seq_len * args.batch_size
 
         if accum_step < args.grad_accum:
             continue

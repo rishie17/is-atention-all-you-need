@@ -400,6 +400,7 @@ class Qwen3AttnResModel(Qwen3PreTrainedModel):
             position_ids = cache_position.unsqueeze(0)
 
         if not isinstance(causal_mask_mapping := attention_mask, dict):
+            import inspect
             mask_kwargs = dict(
                 config=self.config,
                 inputs_embeds=inputs_embeds,
@@ -408,9 +409,14 @@ class Qwen3AttnResModel(Qwen3PreTrainedModel):
                 past_key_values=past_key_values,
                 position_ids=position_ids,
             )
-            causal_mask_mapping = {"full_attention": create_causal_mask(**mask_kwargs)}
+            # filter to only kwargs the installed version of create_causal_mask accepts
+            valid = set(inspect.signature(create_causal_mask).parameters)
+            filtered = {k: v for k, v in mask_kwargs.items() if k in valid}
+            causal_mask_mapping = {"full_attention": create_causal_mask(**filtered)}
             if self.has_sliding_layers:
-                causal_mask_mapping["sliding_attention"] = create_sliding_window_causal_mask(**mask_kwargs)
+                valid_sw = set(inspect.signature(create_sliding_window_causal_mask).parameters)
+                filtered_sw = {k: v for k, v in mask_kwargs.items() if k in valid_sw}
+                causal_mask_mapping["sliding_attention"] = create_sliding_window_causal_mask(**filtered_sw)
 
         position_embeddings = self.rotary_emb(inputs_embeds, position_ids)
 

@@ -174,7 +174,7 @@ def main():
             print(f"AttnRes params: {n_attnres/1e3:.1f}K")
 
     # find_unused_parameters needed when some params aren't in the forward graph
-    find_unused = args.gate_type != "bias"
+    find_unused = args.gate_type != "bias" or args.mode == "rescaled"
     model = DDP(model, device_ids=[local_rank], find_unused_parameters=find_unused)
 
     # ── optimizer ──

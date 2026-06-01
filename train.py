@@ -125,8 +125,12 @@ def build_model(args, device):
         )
         model = Qwen3AttnResForCausalLM(config)
 
-    dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
-    model = model.to(device=device, dtype=dtype_map[args.dtype])
+    # fp16 weights break GradScaler — keep weights in fp32 for fp16 mode,
+    # autocast handles the fp16 compute. bf16 is stable enough to use directly.
+    if args.dtype == "bf16":
+        model = model.to(device=device, dtype=torch.bfloat16)
+    else:
+        model = model.to(device=device)  # fp32 weights for fp16/fp32 modes
     return model
 
 

@@ -13,6 +13,7 @@ equivalent to standard Qwen3.  During training the bias and proj weights
 co-adapt, letting the model learn cross-block attention.
 """
 
+import inspect
 import torch
 import torch.nn as nn
 
@@ -400,7 +401,6 @@ class Qwen3AttnResModel(Qwen3PreTrainedModel):
             position_ids = cache_position.unsqueeze(0)
 
         if not isinstance(causal_mask_mapping := attention_mask, dict):
-            import inspect
             mask_kwargs = dict(
                 config=self.config,
                 inputs_embeds=inputs_embeds,

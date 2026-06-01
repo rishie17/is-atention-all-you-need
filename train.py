@@ -63,6 +63,8 @@ def parse_args():
     p.add_argument("--wandb_entity", default="wdlctc_abr")
     p.add_argument("--run_name", default=None)
     p.add_argument("--seed", type=int, default=42)
+    p.add_argument("--dtype", default="bf16", choices=["bf16", "fp16", "fp32"],
+                   help="bf16 for A100/H100, fp16 for T4, fp32 for debugging")
     return p.parse_args()
 
 
@@ -77,7 +79,7 @@ def cosine_with_warmup(step, warmup, total, lr_min_ratio):
 def token_stream(dataset_name, config_name, tokenizer, seq_len, rank, world_size, seed):
     from datasets import load_dataset
     ds = load_dataset(dataset_name, name=config_name, split="train",
-                      streaming=True, trust_remote_code=True)
+                      streaming=True)
     ds = ds.shuffle(seed=seed + rank, buffer_size=10_000)
     ds = ds.skip(rank)
     buf = []
@@ -123,7 +125,8 @@ def build_model(args, device):
         )
         model = Qwen3AttnResForCausalLM(config)
 
-    model = model.to(device=device)
+    dtype_map = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}
+    model = model.to(device=device, dtype=dtype_map[args.dtype])
     return model
 
 
@@ -164,18 +167,18 @@ def main():
         print(f"Building {args.mode} model from scratch...")
 
     model = build_model(args, device)
-    model = torch.compile(model)
 
     n_params = sum(p.numel() for p in model.parameters()) / 1e6
     if is_main:
-        print(f"Model: {n_params:.1f}M params | mode={args.mode} | d={args.hidden_size} L={args.num_layers}")
+        print(f"Model: {n_params:.1f}M params | mode={args.mode} | d={args.hidden_size} L={args.num_layers} | dtype={args.dtype}")
         if args.mode != "baseline":
             n_attnres = sum(p.numel() for n, p in model.named_parameters() if "res_" in n)
             print(f"AttnRes params: {n_attnres/1e3:.1f}K")
 
-    # find_unused_parameters needed when some params aren't in the forward graph
+    # compile before DDP causes issues — wrap DDP first, then compile
     find_unused = args.gate_type != "bias" or args.mode == "rescaled"
     model = DDP(model, device_ids=[local_rank], find_unused_parameters=find_unused)
+    model = torch.compile(model)
 
     # ── optimizer ──
     optimizer = AdamW(model.parameters(), lr=args.lr,
@@ -191,7 +194,10 @@ def main():
     stream = token_stream(args.dataset, args.dataset_name, tokenizer,
                           args.seq_len, rank, world_size, args.seed)
 
-    scaler = torch.amp.GradScaler("cuda")
+    # GradScaler only needed for fp16 — bf16 has wide enough range natively
+    use_scaler = args.dtype == "fp16"
+    scaler = torch.amp.GradScaler("cuda", enabled=use_scaler)
+    autocast_dtype = {"bf16": torch.bfloat16, "fp16": torch.float16, "fp32": torch.float32}[args.dtype]
 
     # ── training ──
     os.makedirs(args.out_dir, exist_ok=True)
@@ -222,7 +228,7 @@ def main():
         input_ids = batch[:, :-1]                    # [B, seq_len]
         labels = input_ids
 
-        with torch.amp.autocast("cuda", dtype=torch.float16):
+        with torch.amp.autocast("cuda", dtype=autocast_dtype):
             out = model(input_ids=input_ids, labels=labels)
         loss = out.loss / args.grad_accum
         scaler.scale(loss).backward()
@@ -268,6 +274,7 @@ def main():
 
                 tokens_seen = 0
                 t0 = time.time()
+
         accum_loss = 0.0
 
         if is_main and global_step % args.save_every == 0:

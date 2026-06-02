@@ -26,7 +26,7 @@ from datasets import load_dataset
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--model_path", required=True)
-    p.add_argument("--mode", required=True, choices=["baseline", "block", "full"])
+    p.add_argument("--mode", required=True, choices=["baseline", "block", "full", "rescaled"])
     p.add_argument("--seq_len", type=int, default=2048)
     p.add_argument("--num_samples", type=int, default=200,
                    help="Number of evaluation samples")
@@ -37,10 +37,12 @@ def parse_args():
 def load_model(model_path, mode, device):
     if mode == "baseline":
         model = Qwen3ForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch.bfloat16, device_map={"": device})
+            model_path, torch_dtype=torch.bfloat16, device_map={"": device},
+            local_files_only=True)
     else:
         model = Qwen3AttnResForCausalLM.from_pretrained(
-            model_path, torch_dtype=torch.bfloat16, device_map={"": device})
+            model_path, torch_dtype=torch.bfloat16, device_map={"": device},
+            local_files_only=True)
     model.eval()
     return model
 

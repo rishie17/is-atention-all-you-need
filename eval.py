@@ -35,24 +35,28 @@ def parse_args():
 
 
 def load_model(model_path, mode, device):
-    import os
+    import os, json
     from safetensors.torch import load_file as load_safetensors
-    from transformers import AutoConfig
+    from transformers.models.qwen3.configuration_qwen3 import Qwen3Config
+    from modeling_attnres import Qwen3AttnResConfig, Qwen3AttnResForCausalLM
 
-    # Load config from local path
-    config = AutoConfig.from_pretrained(model_path, local_files_only=True)
+    # Read config.json directly — avoid from_pretrained's HF repo validation
+    with open(os.path.join(model_path, "config.json")) as f:
+        cfg = json.load(f)
+    cfg.pop("_name_or_path", None)
+    cfg.pop("transformers_version", None)
+    cfg.pop("torch_dtype", None)
 
-    # Build model from config
     if mode == "baseline":
+        config = Qwen3Config.from_dict(cfg)[0]
         model = Qwen3ForCausalLM(config)
     else:
+        config = Qwen3AttnResConfig.from_dict(cfg)[0]
         model = Qwen3AttnResForCausalLM(config)
 
-    # Load weights manually — bypass from_pretrained's HF repo validation
     weights_path = os.path.join(model_path, "model.safetensors")
-    state_dict = load_safetensors(weights_path, device=device)
+    state_dict = load_safetensors(weights_path, device="cpu")
     model.load_state_dict(state_dict, strict=False)
-
     model = model.to(device=device, dtype=torch.bfloat16)
     model.eval()
     return model

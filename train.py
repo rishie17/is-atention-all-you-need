@@ -33,8 +33,8 @@ from transformers.models.qwen3.modeling_qwen3 import Qwen3ForCausalLM
 
 def parse_args():
     p = argparse.ArgumentParser()
-    p.add_argument("--mode", default="baseline", choices=["baseline", "block", "full", "rescaled"],
-                   help="baseline (standard Qwen3), block (Block AttnRes), full (Full AttnRes), rescaled (Rescaled Residual)")
+    p.add_argument("--mode", default="baseline", choices=["baseline", "block", "full", "rescaled", "rescaled_sqrt"],
+                   help="baseline, block, full, rescaled (1/(l+1)), rescaled_sqrt (1/sqrt(l+1))")
     p.add_argument("--hidden_size", type=int, default=512)
     p.add_argument("--num_layers", type=int, default=12)
     p.add_argument("--num_heads", type=int, default=8)
@@ -114,7 +114,8 @@ def build_model(args, device):
         config = Qwen3Config(**common)
         model = Qwen3ForCausalLM(config)
     else:
-        attnres_mode = "rescaled_residual" if args.mode == "rescaled" else args.mode
+        mode_map = {"rescaled": "rescaled_residual", "rescaled_sqrt": "rescaled_sqrt"}
+        attnres_mode = mode_map.get(args.mode, args.mode)
         config = Qwen3AttnResConfig(
             attnres_num_blocks=args.num_blocks,
             attnres_recency_bias_init=0.0,  # zero init — paper default
@@ -179,7 +180,7 @@ def main():
             print(f"AttnRes params: {n_attnres/1e3:.1f}K")
 
     # compile before DDP causes issues — wrap DDP first, then compile
-    find_unused = args.gate_type != "bias" or args.mode == "rescaled"
+    find_unused = args.gate_type != "bias" or args.mode in ("rescaled", "rescaled_sqrt")
     model = DDP(model, device_ids=[local_rank], find_unused_parameters=find_unused)
     model = torch.compile(model)
 

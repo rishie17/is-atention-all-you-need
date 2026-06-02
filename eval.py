@@ -26,7 +26,7 @@ from datasets import load_dataset
 def parse_args():
     p = argparse.ArgumentParser()
     p.add_argument("--model_path", required=True)
-    p.add_argument("--mode", required=True, choices=["baseline", "block", "full", "rescaled"])
+    p.add_argument("--mode", required=True, choices=["baseline", "block", "full", "rescaled", "rescaled_sqrt"])
     p.add_argument("--seq_len", type=int, default=2048)
     p.add_argument("--num_samples", type=int, default=200,
                    help="Number of evaluation samples")

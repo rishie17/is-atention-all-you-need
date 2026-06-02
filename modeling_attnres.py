@@ -251,8 +251,12 @@ class Qwen3AttnResDecoderLayer(GradientCheckpointingLayer):
         entropy_accum = kwargs.pop("entropy_accum", None)
 
         # ---- Rescaled residual: deterministic per-layer scaling, no block history ----
-        if self.attnres_mode == "rescaled_residual":
-            alpha = 1.0 / (self.layer_idx + 1)
+        if self.attnres_mode in ("rescaled_residual", "rescaled_sqrt"):
+            if self.attnres_mode == "rescaled_sqrt":
+                import math
+                alpha = 1.0 / math.sqrt(self.layer_idx + 1)
+            else:
+                alpha = 1.0 / (self.layer_idx + 1)
             attn_out, _ = self.self_attn(
                 hidden_states=self.input_layernorm(partial_block),
                 attention_mask=attention_mask,

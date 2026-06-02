@@ -48,10 +48,10 @@ def load_model(model_path, mode, device):
     cfg.pop("torch_dtype", None)
 
     if mode == "baseline":
-        config = Qwen3Config.from_dict(cfg)[0]
+        config = Qwen3Config.from_dict(cfg)
         model = Qwen3ForCausalLM(config)
     else:
-        config = Qwen3AttnResConfig.from_dict(cfg)[0]
+        config = Qwen3AttnResConfig.from_dict(cfg)
         model = Qwen3AttnResForCausalLM(config)
 
     weights_path = os.path.join(model_path, "model.safetensors")
